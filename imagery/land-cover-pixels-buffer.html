@@ -6,30 +6,254 @@
     <title>Calculate Land Cover Raster Pixels in Buffer Web Map- Ifeoma Collins</title>
     <link rel="stylesheet" href="https://js.arcgis.com/3.17/esri/css/esri.css">
     <style>
-  html, body, #map {
-    height: 100%;
-    padding: 0;
-    margin: 0;
+
+    #header {
+        width: 100%;
+        /*background-color: red; */
+        height: 5px;
+    }
+
+    #container {
+        width: 1200px;
+        margin: auto;
+        height:100%;
+    }
+
+   #map {
+     height:600px;
+     width: 750px;
+     float: left;
+    padding: 5px;
+    margin: 5px;
   }
+
+  #text {
+    width: 400px;
+       float: left;
+
+ }
 </style>
 
     <script src="https://js.arcgis.com/3.17/"></script>
     <script>
     var map;
-  require(["esri/map", "dojo/domReady!"],
-   function(Map) {
+  require(["esri/map",
+  "esri/layers/RasterLayer",
+  "esri/layers/PixelBlock",
+  "esri/dijit/PopupTemplate",
+  "esri/layers/RasterFunction",
+  "esri/tasks/BufferParameters",
+  "esri/SpatialReference",
+  "dojo/dom",
+  "esri/tasks/GeometryService",
+  "esri/symbols/SimpleLineSymbol",
+  "esri/symbols/SimpleFillSymbol",
+  "dojo/_base/array",
+  "esri/Color",
+  "esri/graphic",
+  "dojo/domReady!"],
+   function(Map,
+   RasterLayer,
+ PixelBlock,
+PopupTemplate,
+RasterFunction,
+BufferParameters,
+SpatialReference,
+dom,
+GeometryService,
+SimpleLineSymbol,
+SimpleFillSymbol,
+array,
+Color,
+Graphic) {
+
+  var gsvc = null;//geometryservice variable
+
     // code to create the map and add a basemap will go here
     map = new Map("map", {
-    basemap: "gray"
-    center: [-122.45, 37.75],
-    zoom: 13
+    basemap: "gray",
+    center: [-100.45, 37.75],
+    zoom: 4
     });
+
+    var rasterUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/ScientificData/MODIS_Landcover/ImageServer";
+      var fields = [ "Shape_Area" ];
+
+    //Define the raster layer and add to map
+      var rasterLayer = new RasterLayer(rasterUrl, {
+        opacity: 1, //,
+         pixelFilter: reclassifyPixels,
+         hasAttributionData:true
+        //imageServiceParameters: params
+      });
+      map.addLayer(rasterLayer);
+
+     //var att = rasterLayer.getAttributionData()
+
+     //console.log(att);
+
+      // The pixel filter to set symbology
+        function reclassifyPixels(pixelData) {
+          //console.log(pixelData);
+            if (pixelData == null || pixelData.pixelBlock == null) {
+                return;
+            }
+
+             // The pixelBlock stores the values of all pixels visible in the view
+            var pixelBlock = pixelData.pixelBlock;
+
+             // The pixels visible in the view
+            var pixels = pixelBlock.pixels;
+            console.log("number of bands in layer ", pixels.length);
+            // An array containing all the pixels in the first band
+            var band1 = pixels[0];
+            console.log("band1 ", band1);
+
+            var numPixels = pixelBlock.width * pixelBlock.height;
+             //console.log(pixelBlock);
+            if (pixels == null) {
+                return;
+            }
+            var p = pixels[0];
+            var pr = new Uint8Array(p.length); //set up array for red values
+            var pg = new Uint8Array(p.length); //set up array for green values
+            var pb = new Uint8Array(p.length); //set up array for blue values
+            //console.log(pr);
+            for (var i = 0; i < numPixels; i++) {
+
+                //apply color based on land cover value of each pixel
+
+                if(p[i]==0){ //water
+                  pr[i] = 0;  //red
+                  pg[i] = 0;  //green
+                  pb[i] = 255;  //blue
+                }
+
+                if(p[i]==1){ //Evergreen Needleleaf forest"
+                  pr[i] = 0;  //red
+                  pg[i] = 100;  //green
+                  pb[i] = 70;  //blue
+                }
+
+                if(p[i]==2){ //Evergreen Broadleaf forest
+                  pr[i] = 0;  //red
+                  pg[i] = 92;  //green
+                  pb[i] = 22;  //blue
+                }
+
+
+                if(p[i]==3){ //Deciduous Needleleaf forest
+                  pr[i] = 0;  //red
+                  pg[i] = 143;  //green
+                  pb[i] = 26;  //blue
+                }
+
+                if(p[i]==4){ //Deciduous Broadleaf forest
+                  pr[i] = 0;  //red
+                  pg[i] = 160;  //green
+                  pb[i] = 70;  //blue
+                }
+
+
+                if(p[i]==5){ //Mixed forest
+                  pr[i] = 55;  //red
+                  pg[i] = 143;  //green
+                  pb[i] = 0;  //blue
+                }
+
+                if(p[i]==6){ //Closed shrublands
+                  pr[i] = 117;  //red
+                  pg[i] = 128;  //green
+                  pb[i] = 155;  //blue
+                }
+
+                if(p[i]==7){ //Open shrublands
+                  pr[i] = 117;  //red
+                  pg[i] = 128;  //green
+                  pb[i] = 0;  //blue
+                }
+
+                //anything that's missing will just be black, no fill
+                //values from here https://sampleserver6.arcgisonline.com/arcgis/rest/services/ScientificData/MODIS_Landcover/ImageServer/rasterAttributeTable
+
+            }
+
+            pixelData.pixelBlock.pixels = [pr, pg, pb];  //assign rgb values to each pixel
+            pixelData.pixelBlock.statistics = null;
+            pixelData.pixelBlock.pixelType = "U8";
+            return pixelData;
+        }
+
+//outline
+        //click on map to create 5 mile buffer circle polygon geometry/event handler
+
+         gsvc = new GeometryService("https://utility.arcgisonline.com/ArcGIS/rest/services/Geometry/GeometryServer");
+
+         map.on("click", doBuffer);
+
+         function doBuffer(evt){
+        map.graphics.clear();
+        var params = new BufferParameters();
+        params.geometries  = [ evt.mapPoint ];
+        params.distances = [5]; //5 mile
+        params.unit = GeometryService.UNIT_STATUTE_MILE;
+        params.bufferSpatialReference = new SpatialReference({wkid: 32662});
+        params.outSpatialReference = map.spatialReference;
+        gsvc.buffer(params, showBuffer);
+        }
+
+        function showBuffer(geometries){
+          var symbol = new SimpleFillSymbol(
+       SimpleFillSymbol.STYLE_SOLID,
+
+       new SimpleLineSymbol(
+         SimpleLineSymbol.STYLE_SOLID,
+         new Color([0,0,255,0.65]), 2
+       ),
+       new Color([0,0,255,0.35])
+     );
+
+     array.forEach(geometries, function(geometry) {
+       var graphic = new Graphic(geometry, symbol);
+      map.graphics.add(graphic);
+     });
+
+        }
+        //get percentage of each land cover type found in whole buffer
+
+        //create pie chart in text div to show these numbers
+        //also look at c3.js, lulc map code
+
+        //add legend
+
+
+        //calculate area of pixels per land cover type based on buffer values
+
+
+
+//references:
+         //question https://geonet.esri.com/thread/181714-how-to-find-which-raster-pixels-are-within-a-buffer-geometry-using-rasterlayer-api
+         //buffer: https://developers.arcgis.com/javascript/3/jssamples/util_buffer.html
+         //raster pop up: http://jsfiddle.net/kevinmSAGIS/L834u2nt/4/
+        //id raster pixel value: https://geonet.esri.com/thread/106869
+        // area of raster https://geonet.esri.com/thread/25241
+        //raster table info: https://geonet.esri.com/thread/181810-how-do-you-display-the-tabular-information-from-an-imagery-layers-raster-attribute-table
   });
 </script>
   </head>
 
   <body class="claro">
+    <div id="header"></div>
+    <div id="container">
   <div id="map"></div>
+  <div id="text"><b>Land Cover Composition Demo by Ifeoma Collins</b><br><br>
+  <p>Click on map to display the percentage of land cover types within a 5 mile buffer. </p>
+  <p>The area of each land cover type within the buffer are also listed below.</p>
+  <div id="piechart"></div>
+  <div id="legend"></div>
+  <div id="area"></div>
+  </div>
+</div>
 </body>
 
 </html>
