@@ -39,6 +39,10 @@
     var map;
   require(["esri/map",
   "esri/layers/RasterLayer",
+  "esri/tasks/IdentifyTask",
+  "esri/tasks/IdentifyParameters",
+  "esri/dijit/Popup",
+  "esri/InfoTemplate",
   "esri/layers/PixelBlock",
   "esri/dijit/PopupTemplate",
   "esri/layers/RasterFunction",
@@ -48,12 +52,23 @@
   "esri/tasks/GeometryService",
   "esri/symbols/SimpleLineSymbol",
   "esri/symbols/SimpleFillSymbol",
-  "dojo/_base/array",
+   "dojo/_base/array",
   "esri/Color",
   "esri/graphic",
+  "dojo/parser",
+  "dojo/_base/lang",
+  "dojo/dom-construct",
+  "esri/tasks/IdentifyResult",
+  "esri/tasks/ImageServiceIdentifyTask",
+  "esri/tasks/ImageServiceIdentifyParameters",
+  "esri/geometry/Point",
   "dojo/domReady!"],
    function(Map,
    RasterLayer,
+   IdentifyTask,
+   IdentifyParameters,
+   Popup,
+   InfoTemplate,
  PixelBlock,
 PopupTemplate,
 RasterFunction,
@@ -65,15 +80,26 @@ SimpleLineSymbol,
 SimpleFillSymbol,
 array,
 Color,
-Graphic) {
-
+Graphic,
+parser,
+lang,
+domConstruct,
+IdentifyResult,
+ImageServiceIdentifyTask,
+ImageServiceIdentifyParameters,
+Point
+) {
+parser.parse();
   var gsvc = null;//geometryservice variable
+
+  var pieChartDiv = document.getElementById('piechart');
 
     // code to create the map and add a basemap will go here
     map = new Map("map", {
     basemap: "gray",
     center: [-100.45, 37.75],
-    zoom: 4
+    zoom: 4,
+    infoWindow: popup //remove later
     });
 
     var rasterUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/ScientificData/MODIS_Landcover/ImageServer";
@@ -107,7 +133,7 @@ Graphic) {
             console.log("number of bands in layer ", pixels.length);
             // An array containing all the pixels in the first band
             var band1 = pixels[0];
-            console.log("band1 ", band1);
+            //console.log("band1 ", band1);
 
             var numPixels = pixelBlock.width * pixelBlock.height;
              //console.log(pixelBlock);
@@ -182,16 +208,90 @@ Graphic) {
             pixelData.pixelBlock.statistics = null;
             pixelData.pixelBlock.pixelType = "U8";
             return pixelData;
-        }
+        };
 
 //outline
         //click on map to create 5 mile buffer circle polygon geometry/event handler
 
          gsvc = new GeometryService("https://utility.arcgisonline.com/ArcGIS/rest/services/Geometry/GeometryServer");
+          var identifyTask, identifyParams, imageTask, evt;
 
-         map.on("click", doBuffer);
+
+
+           map.on("load", mapReady);
+
+
+
+         function mapReady () {
+           console.log("map ready");
+                   map.on("click", executeIdentifyTask);
+                   //create identify tasks and setup parameters
+                   //identifyTask = new IdentifyTask(rasterUrl);
+
+                   imageTask = new ImageServiceIdentifyTask(rasterUrl);
+
+                   console.log("imageTask", imageTask);
+
+                   /*
+                   identifyParams = new IdentifyParameters();
+                   identifyParams.tolerance = 30;
+                   identifyParams.returnGeometry = true;
+                   //identifyParams.layerIds = [0];
+                   identifyParams.layerOption = IdentifyParameters.LAYER_OPTION_ALL;
+                   identifyParams.width = map.width;
+                   identifyParams.height = map.height;
+                   console.log('identifyparams ', identifyParams);
+                   */
+
+                 }
+
+                 function executeIdentifyTask (event) {
+                   console.log("in execute idenitfytask ", event);
+
+                     evt = event;
+                     var point = new Point(event.mapPoint.x, event.mapPoint.y, new SpatialReference({
+                         wkid: 102100
+                    }));
+
+                    imageParams = new ImageServiceIdentifyParameters();
+                    imageParams.geometry = point;
+                    imageParams.pixelSize;
+                    imageTask.execute(imageParams, getResults);
+
+                    function getResults(results) {
+                      console.log('results ', results);
+                   pixelValue = results.value;
+
+                   // InfoWindow expects an array of features from each deferred
+                   // object that you pass. If the response from the task execution
+                   // above is not an array of features, then you need to add a callback
+                   // like the one above to post-process the response and return an
+                   // array of features.
+
+                   map.infoWindow.setTitle("Details");
+                   map.infoWindow.setContent("Pixel Value: " + pixelValue);
+                   map.infoWindow.show(evt.mapPoint, map.getInfoWindowAnchor(evt.screenPoint));
+
+                   pieChartDiv.innerHTML = "Pixel Value: " + pixelValue; //add value to pie chart div for testing
+
+
+
+
+
+
+
+                }};
+
+                 //pop up stuf****
+
+
+         //map.on("click", doBuffer);
+
+
 
          function doBuffer(evt){
+           console.log(evt);
+           pieChartDiv.innerHTML = evt.x + ", " + evt.y; //add value to pie chart div for testing
         map.graphics.clear();
         var params = new BufferParameters();
         params.geometries  = [ evt.mapPoint ];
@@ -217,20 +317,41 @@ Graphic) {
        var graphic = new Graphic(geometry, symbol);
       map.graphics.add(graphic);
      });
+   };
 
-        }
 
-        //for testing..add xy point to div pie chart section - remove later
-        
-        //get percentage of each land cover type found in whole buffer
 
-        //create pie chart in text div to show these numbers
+        //for testing..add xy point to div pie chart section - remove later when click on layer
+
+        //for testing...pop up
+
+        //try errback/call back, this.lang, reading about all parameters, identify result...reading about callbacks/defers..
+
+
+        var popup = new Popup({
+          fillSymbol: new SimpleFillSymbol(SimpleFillSymbol.STYLE_SOLID,
+            new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID,
+              new Color([255, 0, 0]), 2), new Color([255, 255, 0, 0.25]))
+        }, domConstruct.create("div"));
+
+        //within buffer - find/select pixels that intersect with buffer graphic or do some kind of geometry within 5 miles manualy
+
+        //use pixel value??? IdentifyTask
+        //image service task: http://jsfiddle.net/kL3eygvp/
+        //get land cover types in buffer - legend
+
+
+        //get percentage of each land cover type found in whole buffer - pie chart
+
+        //create pie chart in text div to show percentages - pie chart
+
+
+        //get area in buffer  - area
+        //calculate area of pixels per land cover type based on buffer values
+
+
         //also look at c3.js, lulc map code
 
-        //add legend
-
-
-        //calculate area of pixels per land cover type based on buffer values
 
 
 
@@ -241,6 +362,8 @@ Graphic) {
         //id raster pixel value: https://geonet.esri.com/thread/106869
         // area of raster https://geonet.esri.com/thread/25241
         //raster table info: https://geonet.esri.com/thread/181810-how-do-you-display-the-tabular-information-from-an-imagery-layers-raster-attribute-table
+        //identity task on pixel value https://geonet.esri.com/thread/176628
+
   });
 </script>
   </head>
